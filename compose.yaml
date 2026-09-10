@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:18.6
+    environment:
+      POSTGRES_USER: family
+      POSTGRES_PASSWORD: family
+      POSTGRES_DB: family_network_dev
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - family_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family -d family_network_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  family_pg:

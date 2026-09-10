@@ -1,3 +1,10 @@
 .DS_Store
 seed/private/*
 !seed/private/.gitkeep
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.env*
+!.env.example

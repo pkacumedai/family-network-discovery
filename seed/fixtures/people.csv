@@ -1,0 +1,7 @@
+person_id,display_name,birth_date,is_living,nickname,notes
+P001,Alex Example,1950-06-12,true,,Synthetic fixture
+P002,Robin Example,1952-09-20,true,,
+P003,Sam Example,1978-02-14,true,,
+P004,Sam Example,,true,,Intentionally repeated name
+P005,Taylor Example,2003-08-10,true,,
+P006,Jordan Example,,false,,Disconnected ancestor

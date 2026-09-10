@@ -1,0 +1,4 @@
+member_key,display_name,email,person_id,onboarding_state
+M001,Alex Example,alex@example.com,P001,PRELINKED
+M002,Sam Example,sam@example.com,,UNCLAIMED
+M003,Casey Example,casey@example.com,,UNCLAIMED
