@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { retrieveExplorerGraph } from '../../src/server/graph/query';
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { sql } from 'drizzle-orm';
@@ -17,6 +18,26 @@ beforeAll(async () => { await migrate(db, { migrationsFolder: './drizzle' }); })
 afterAll(async () => { await pool.end(); });
 beforeEach(async () => { await db.execute(sql`TRUNCATE events, profile_privacy, relationships, members, people CASCADE`); });
 describe('PostgreSQL foundation', () => {
+  it('retrieves only display-safe graph fields and leaves all canonical data unchanged', async () => {
+    await importSeed(db, { ...files, people: 'person_id,display_name,birth_date,notes\nP1,One,1978-02-14,private note\nP2,Two,,\n' }, 'private-source');
+    const before = await db.select().from(people);
+    const relationBefore = await db.select().from(relationships);
+    const memberBefore = await db.select().from(members);
+    const result = await retrieveExplorerGraph(db);
+    expect(result.people).toEqual([{ id: 'P1', displayName: 'One' }, { id: 'P2', displayName: 'Two' }]);
+    expect(Object.keys(result.relationships[0]).sort()).toEqual(['fromPersonId', 'id', 'relationshipType', 'status', 'toPersonId']);
+    expect(JSON.stringify(result)).not.toMatch(/1978|private|email|birthDate|createdByMemberId/);
+    await db.update(profilePrivacy).set({ shareBirthYear: true, shareBirthMonthDay: true });
+    expect(await retrieveExplorerGraph(db)).toEqual(result);
+    await db.delete(profilePrivacy);
+    expect(await retrieveExplorerGraph(db)).toEqual(result);
+    expect(await db.select().from(people)).toEqual(before);
+    expect(await db.select().from(relationships)).toEqual(relationBefore);
+    expect(await db.select().from(members)).toEqual(memberBefore);
+  });
+  it('retrieves an empty graph without inventing fixture data', async () => {
+    expect(await retrieveExplorerGraph(db)).toEqual({ people: [], relationships: [] });
+  });
   it('applies migrations repeatedly', async () => { await migrate(db, { migrationsFolder: './drizzle' }); });
   it('imports explicit records, seed provenance and private defaults', async () => {
     expect(await importSeed(db, files, 'test-fixture')).toMatchObject({ people: 2, relationships: 1, members: 1 });

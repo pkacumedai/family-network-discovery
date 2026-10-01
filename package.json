@@ -6,9 +6,9 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --hostname 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
@@ -18,10 +18,12 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:validate": "tsx scripts/seed.ts validate",
-    "seed": "tsx scripts/seed.ts import"
+    "seed": "tsx scripts/seed.ts import",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "csv-parse": "7.0.2",
+    "cytoscape": "3.34.3",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.45.2",
     "next": "16.3.4",
@@ -32,6 +34,7 @@
     "zod": "4.6.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "24.13.4",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
