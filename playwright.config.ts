@@ -11,5 +11,5 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['iPhone 13'], defaultBrowserType: 'chromium' } },
   ],
   webServer: { command: 'npm run dev -- --port 3100', url: 'http://127.0.0.1:3100', reuseExistingServer: false,
-    env: { PLAYWRIGHT_TEST_SERVER: 'true', DATABASE_URL: databaseUrl, ENABLE_LOCAL_EXPLORER: 'true' }, timeout: 120000 },
+    env: { PLAYWRIGHT_TEST_SERVER: 'true', DATABASE_URL: databaseUrl, BETTER_AUTH_URL: 'http://127.0.0.1:3100', BETTER_AUTH_SECRET: 'browser-test-secret-only-01234567890123456789', MAIL_TRANSPORT: 'mailpit', SMTP_HOST: '127.0.0.1', SMTP_PORT: '1025' }, timeout: 120000 },
 });

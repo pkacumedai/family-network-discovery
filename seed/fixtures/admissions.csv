@@ -1,0 +1,4 @@
+admission_id,family_id,email,role,status,expected_person_id
+M001,sample-family,alex@example.com,ADMIN,ACTIVE,P001
+M002,sample-family,sam@example.com,MEMBER,ACTIVE,P004
+M003,sample-family,casey@example.com,MEMBER,ACTIVE,

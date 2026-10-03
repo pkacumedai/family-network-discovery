@@ -6,13 +6,13 @@ import { canonicalize, relationshipTypes } from '../../domain/relationships';
 const required = z.string().trim().min(1);
 const blank = z.string().default('');
 const personSchema = z.object({
-  person_id: required, display_name: required,
+  person_id: required, display_name: required, family_id: z.string().default('sample-family'),
   birth_date: blank.refine(v => !v || (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) > 0 &&
     !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v), 'Invalid calendar date'),
   is_living: z.enum(['', 'true', 'false']).default(''), nickname: blank, notes: blank,
 }).strict();
 const relationshipSchema = z.object({
-  from_person_id: required, to_person_id: required, relationship_type: z.enum(relationshipTypes),
+  family_id: z.string().default('sample-family'), from_person_id: required, to_person_id: required, relationship_type: z.enum(relationshipTypes),
   relationship_id: blank, notes: blank,
 }).strict();
 const memberSchema = z.object({
@@ -22,11 +22,13 @@ const memberSchema = z.object({
 export type SeedPerson = z.infer<typeof personSchema>;
 export type SeedRelationship = z.infer<typeof relationshipSchema>;
 export type SeedMember = z.infer<typeof memberSchema>;
-export interface SeedData { people: SeedPerson[]; relationships: SeedRelationship[]; members: SeedMember[] }
+const familySchema = z.object({ family_id: required, name: required }).strict();
+const admissionSchema = z.object({ admission_id: required, family_id: required, email: z.email().transform(v => v.toLowerCase()), role: z.enum(['MEMBER', 'ADMIN']), status: z.enum(['ACTIVE', 'REVOKED']), expected_person_id: z.string().trim().optional() }).strict();
+export interface SeedData { families: z.infer<typeof familySchema>[]; admissions: z.infer<typeof admissionSchema>[]; people: SeedPerson[]; relationships: SeedRelationship[]; members: SeedMember[] }
 export interface Issue { file: string; row?: number; code: string }
 export interface ValidationReport { data: SeedData; errors: Issue[]; warnings: Issue[]; components: number }
 
-export function validateSeed(files: { people: string; relationships: string; members?: string }): ValidationReport {
+export function validateSeed(files: { people: string; relationships: string; members?: string; families?: string; admissions?: string }, admissionPeople?: readonly Pick<SeedPerson, 'person_id' | 'family_id'>[]): ValidationReport {
   const errors: Issue[] = [], warnings: Issue[] = [];
   function rows<T>(file: string, input: string, schema: z.ZodType<T>, requiredHeaders: string[]): T[] {
     try {
@@ -43,6 +45,8 @@ export function validateSeed(files: { people: string; relationships: string; mem
       });
     } catch { errors.push({ file, code: 'INVALID_CSV' }); return []; }
   }
+  const families = files.families === undefined ? [{ family_id: 'sample-family', name: 'Sample Family' }] : rows('families.csv', files.families, familySchema, ['family_id', 'name']);
+  const admissions = files.admissions === undefined ? [] : rows('admissions.csv', files.admissions, admissionSchema, ['admission_id', 'family_id', 'email', 'role', 'status']);
   const people = rows('people.csv', files.people, personSchema, ['person_id', 'display_name']);
   const relationships = rows('relationships.csv', files.relationships, relationshipSchema, ['from_person_id', 'to_person_id', 'relationship_type']);
   const members = files.members === undefined ? [] : rows('members.csv', files.members, memberSchema, ['member_key', 'display_name', 'email']);
@@ -51,6 +55,19 @@ export function validateSeed(files: { people: string; relationships: string; mem
     for (const value of values) { if (seen.has(value)) errors.push({ file, code }); seen.add(value); }
   }
   unique(people.map(p => p.person_id), 'people.csv', 'DUPLICATE_PERSON_ID');
+  unique(families.map(f => f.family_id), 'families.csv', 'DUPLICATE_FAMILY');
+  unique(admissions.map(a => a.admission_id), 'admissions.csv', 'DUPLICATE_ADMISSION');
+  unique(admissions.map(a => JSON.stringify([a.family_id, a.email])), 'admissions.csv', 'DUPLICATE_ADMISSION');
+  const familyIds = new Set(families.map(f => f.family_id));
+  for (const row of [...people, ...relationships, ...admissions]) if (!familyIds.has(row.family_id)) errors.push({ file: 'families.csv', code: 'UNKNOWN_FAMILY' });
+  const personFamilies = new Map(people.map(p => [p.person_id, p.family_id]));
+  const admissionPersonFamilies = new Map((admissionPeople ?? people).map(p => [p.person_id, p.family_id]));
+  for (const a of admissions) {
+    if (!a.expected_person_id) continue;
+    if (!admissionPersonFamilies.has(a.expected_person_id)) errors.push({ file: 'admissions.csv', code: 'UNKNOWN_EXPECTED_PERSON' });
+    else if (admissionPersonFamilies.get(a.expected_person_id) !== a.family_id) errors.push({ file: 'admissions.csv', code: 'CROSS_FAMILY_EXPECTED_PERSON' });
+  }
+  for (const r of relationships) if (personFamilies.get(r.from_person_id) !== r.family_id || personFamilies.get(r.to_person_id) !== r.family_id) errors.push({ file: 'relationships.csv', code: 'CROSS_FAMILY_RELATIONSHIP' });
   const ids = new Set(people.map(p => p.person_id));
   const adjacent = new Map(people.map(p => [p.person_id, new Set<string>()]));
   const parents = new Map(people.map(p => [p.person_id, new Set<string>()]));
@@ -71,7 +88,11 @@ export function validateSeed(files: { people: string; relationships: string; mem
   unique(members.map(m => m.email), 'members.csv', 'DUPLICATE_LOGIN');
   unique(members.map(m => m.person_id).filter(Boolean), 'members.csv', 'DUPLICATE_CLAIM');
   for (const m of members) {
+    const admission = admissions.find(a => a.admission_id === m.member_key);
+    if (admission && (admission.email !== m.email || admission.family_id !== 'sample-family')) errors.push({ file: 'admissions.csv', code: 'LEGACY_ADMISSION_MISMATCH' });
+    if (!familyIds.has('sample-family')) errors.push({ file: 'members.csv', code: 'UNKNOWN_FAMILY' });
     m.onboarding_state ||= m.person_id ? 'PRELINKED' : 'UNCLAIMED';
+    if (m.person_id && personFamilies.has(m.person_id) && personFamilies.get(m.person_id) !== 'sample-family') errors.push({ file: 'members.csv', code: 'MEMBERSHIP_FAMILY_MISMATCH' });
     if (m.person_id && !ids.has(m.person_id)) errors.push({ file: 'members.csv', code: 'UNKNOWN_PERSON' });
     if ((m.onboarding_state === 'PRELINKED') !== Boolean(m.person_id)) errors.push({ file: 'members.csv', code: 'ONBOARDING_LINK_MISMATCH' });
   }
@@ -97,5 +118,5 @@ export function validateSeed(files: { people: string; relationships: string; mem
     }
   }
   if (components > 1) warnings.push({ file: 'people.csv', code: 'DISCONNECTED_COMPONENTS' });
-  return { data: { people, relationships, members }, errors, warnings, components };
+  return { data: { people, relationships, members, families, admissions }, errors, warnings, components };
 }

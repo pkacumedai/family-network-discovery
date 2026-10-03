@@ -15,6 +15,20 @@
       "when": 1788991995718,
       "tag": "0001_updated_at_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790961994956,
+      "tag": "0002_yummy_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790974140515,
+      "tag": "0003_mixed_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }

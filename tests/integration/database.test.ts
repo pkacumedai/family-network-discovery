@@ -4,7 +4,7 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { sql } from 'drizzle-orm';
 import { connectDatabase } from '../../src/server/db/connection';
-import { people, members, relationships, profilePrivacy } from '../../src/server/db/schema';
+import { people, legacyMembers as members, relationships, profilePrivacy } from '../../src/server/db/schema';
 import { importSeed } from '../../src/server/seed/import';
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !new URL(url).pathname.endsWith('_test')) throw new Error('TEST_DATABASE_URL must name a dedicated database ending in _test');
@@ -16,27 +16,27 @@ const files = {
 };
 beforeAll(async () => { await migrate(db, { migrationsFolder: './drizzle' }); });
 afterAll(async () => { await pool.end(); });
-beforeEach(async () => { await db.execute(sql`TRUNCATE events, profile_privacy, relationships, members, people CASCADE`); });
+beforeEach(async () => { await db.execute(sql`TRUNCATE events, profile_privacy, relationships, legacy_member_records, people, families, app_accounts, auth_user, auth_verification, auth_rate_limit CASCADE`); });
 describe('PostgreSQL foundation', () => {
   it('retrieves only display-safe graph fields and leaves all canonical data unchanged', async () => {
     await importSeed(db, { ...files, people: 'person_id,display_name,birth_date,notes\nP1,One,1978-02-14,private note\nP2,Two,,\n' }, 'private-source');
     const before = await db.select().from(people);
     const relationBefore = await db.select().from(relationships);
     const memberBefore = await db.select().from(members);
-    const result = await retrieveExplorerGraph(db);
+    const result = await retrieveExplorerGraph(db, 'sample-family');
     expect(result.people).toEqual([{ id: 'P1', displayName: 'One' }, { id: 'P2', displayName: 'Two' }]);
     expect(Object.keys(result.relationships[0]).sort()).toEqual(['fromPersonId', 'id', 'relationshipType', 'status', 'toPersonId']);
     expect(JSON.stringify(result)).not.toMatch(/1978|private|email|birthDate|createdByMemberId/);
     await db.update(profilePrivacy).set({ shareBirthYear: true, shareBirthMonthDay: true });
-    expect(await retrieveExplorerGraph(db)).toEqual(result);
+    expect(await retrieveExplorerGraph(db, 'sample-family')).toEqual(result);
     await db.delete(profilePrivacy);
-    expect(await retrieveExplorerGraph(db)).toEqual(result);
+    expect(await retrieveExplorerGraph(db, 'sample-family')).toEqual(result);
     expect(await db.select().from(people)).toEqual(before);
     expect(await db.select().from(relationships)).toEqual(relationBefore);
     expect(await db.select().from(members)).toEqual(memberBefore);
   });
   it('retrieves an empty graph without inventing fixture data', async () => {
-    expect(await retrieveExplorerGraph(db)).toEqual({ people: [], relationships: [] });
+    expect(await retrieveExplorerGraph(db, 'sample-family')).toEqual({ people: [], relationships: [] });
   });
   it('applies migrations repeatedly', async () => { await migrate(db, { migrationsFolder: './drizzle' }); });
   it('imports explicit records, seed provenance and private defaults', async () => {
@@ -55,9 +55,9 @@ describe('PostgreSQL foundation', () => {
   });
   it('rolls back all writes if a database failure occurs after people are inserted', async () => {
     // A temporary constraint produces a real mid-import SQL error.
-    await db.execute(sql`ALTER TABLE members ADD CONSTRAINT test_reject_members CHECK (false)`);
+    await db.execute(sql`ALTER TABLE legacy_member_records ADD CONSTRAINT test_reject_members CHECK (false)`);
     try { await expect(importSeed(db, files, 'test')).rejects.toThrow(); }
-    finally { await db.execute(sql`ALTER TABLE members DROP CONSTRAINT test_reject_members`); }
+    finally { await db.execute(sql`ALTER TABLE legacy_member_records DROP CONSTRAINT test_reject_members`); }
     expect(await db.select().from(people)).toHaveLength(0);
     expect(await db.select().from(relationships)).toHaveLength(0);
   });
@@ -74,7 +74,7 @@ describe('PostgreSQL foundation', () => {
   });
   it('enforces relationship self, symmetric duplicate, endpoint and provenance constraints', async () => {
     await importSeed(db, files, 'test');
-    const edge = { id: 'R2', fromPersonId: 'P2', toPersonId: 'P1', relationshipType: 'SPOUSE_OF' as const, seedSource: 'test' };
+    const edge = { id: 'R2', familyId: 'sample-family', fromPersonId: 'P2', toPersonId: 'P1', relationshipType: 'SPOUSE_OF' as const, seedSource: 'test' };
     await expect(db.insert(relationships).values(edge)).rejects.toThrow();
     await expect(db.insert(relationships).values({ ...edge, toPersonId: 'P2' })).rejects.toThrow();
     await expect(db.insert(relationships).values({ ...edge, toPersonId: 'missing' })).rejects.toThrow();

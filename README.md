@@ -1,133 +1,111 @@
-# Family Network — Milestone 1 read-only explorer
+# Family Network — authenticated Explorer and existing-Person claim
 
-The read-only Family Explorer retrieves the PostgreSQL family graph and provides search, selection, immediate-family context, two layouts, pan/zoom and node repositioning. The PRD is the parent specification; the three Milestone 1 documents in [docs](./docs) govern implementation. All four were read before setup. The specifications are unchanged.
+This Milestone 1 slice supports **email OTP → Family authorization → explicit existing-Person claim → read-only Explorer → logout**. Add Myself, graph editing, verification, invitations UI and cross-Family discovery remain deferred. The PRD and Milestone 1 specifications remain governing context; the implementation request supplies the Account/Family/Membership decisions. See [AUTH_IMPLEMENTATION_REPORT.md](./AUTH_IMPLEMENTATION_REPORT.md) for verification, deviations and deployment limitations. The [authentication evaluation](./docs/authentication-options-evaluation.md) remains the original research artifact.
 
-## Requirements and quick start
+## Local setup
 
-Use Node.js 24 LTS (`nvm use`), npm, and Docker Compose. Versions are pinned in `package.json` and `package-lock.json`; use `npm ci` for reproducible installation.
+Use Node 24 (`nvm use`), npm and Docker Compose. Dependencies are pinned.
 
 ```sh
 npm ci
-cp .env.example .env
-# Start Docker Desktop first.
-docker compose up -d db
+cp .env.example .env  # Only for a new checkout; preserve existing local settings.
+openssl rand -base64 48
+# Put that random value in BETTER_AUTH_SECRET in .env.
+docker compose up -d db mailpit
 npm run db:migrate
 npm run seed:validate
-npm run seed
+npm run seed          # Fresh database only; do not overwrite an existing graph.
 npm run dev
 ```
 
-Open http://127.0.0.1:3000 for the read-only explorer. `.env` must include `ENABLE_LOCAL_EXPLORER=true`; add it if you created `.env` during the foundation setup. `npm run dev` binds to loopback. Use the synthetic fixture already imported during setup; do not re-import over a populated database.
+Open http://127.0.0.1:3000. Sign in with `alex@example.com`, `sam@example.com`, or `casey@example.com`. Open the local inbox at http://127.0.0.1:8025, copy the real six-digit code, and verify it. In Setup Mode, search/select an existing Person, review immediate-family context, then explicitly choose **This is me**. Reload returns to Explorer. Log out ends the session. The sample has six People, six Relationships and intentionally repeated names.
 
-The explorer is intentionally enabled **only in development with the explicit flag**. Production (`npm run start`) always displays a disabled page, even with the flag. This is a local synthetic-data preview, not an authentication mechanism or a hosted pilot. Do not expose the development server or enable it against private family data. A future authenticated boundary must replace this local gate before pilot hosting.
+For an existing checkout, run the forward migration, add the new environment settings, and restart the dev server. Existing graph data is preserved; do not reseed. `ENABLE_LOCAL_EXPLORER` is obsolete and does not bypass authentication. A new local secret and Mailpit settings were added to this workspace's ignored `.env`; production credentials were not configured.
 
-PostgreSQL 18.6 stores all canonical data. The container binds only to loopback and keeps data in the `family_pg` volume. `docker compose stop` preserves it. The example credentials are for local development only.
+The local database is PostgreSQL 18.6 on loopback port 55432; Mailpit SMTP is 1025 and its inbox is 8025, also loopback-only. Docker volumes retain database data. Local mail is captured, never delivered to participants. The same OTP and session machinery runs locally and in production; there is no fixed-code or auth bypass.
 
-## Technical choices and boundaries
+The Person-claim follow-up migration and synthetic admission expectations have already been applied to this workspace. Keep the existing `.env` and secret; do not reseed. For daily use, run `docker compose up -d db mailpit` and `npm run dev`. For another existing database, apply `npm run db:migrate`, then import a reviewed admissions file with expected Person IDs and the existing intended roles/statuses. Do not blindly import sample roles over pilot settings. See [CLAIM_IMPLEMENTATION_REPORT.md](./CLAIM_IMPLEMENTATION_REPORT.md).
 
-Next.js 16.3.4 App Router, React 19.3.0, strict TypeScript, Drizzle ORM 0.45.2, and `pg` provide the application and typed relational layer. SQL migrations preserve database-enforced invariants. Vitest separates unit tests from real PostgreSQL integration tests. Cytoscape.js 3.34.3 handles graph interaction and rendering; responsive CSS provides desktop and mobile layouts. Playwright 1.63.0 exercises the real browser against PostgreSQL.
+## Identity and data boundaries
 
-TypeScript is pinned to stable 6.0.3 because the ESLint parser bundled with the current Next.js configuration requires TypeScript below 6.1; npm's TypeScript 7 release is not supported by that parser. ESLint is pinned to 9.39.5 because Next.js’s React/import/accessibility plugins do not yet declare support for ESLint 10. No prerelease dependencies are selected.
+- Better Auth **1.7.7** owns `auth_user`, `auth_session`, `auth_credential`, `auth_verification`, and `auth_rate_limit`. Its credential `account` model is mapped to `auth_credential` and is unrelated to our application Account.
+- `app_accounts` maps one stable application ID uniquely to an immutable auth-user ID. Better Auth's verified email is authoritative; Account does not duplicate email.
+- `families` owns the graph boundary. Every Person and Relationship belongs to exactly one Family. Composite foreign keys enforce same-Family endpoints.
+- `family_admissions` contains administrator-provisioned email eligibility. It is distinct from authentication and a Person claim.
+- `memberships` joins an Account and Family uniquely, with ACTIVE/REVOKED status, MEMBER/ADMIN role and nullable Person link. A partial unique index prevents two active Memberships from claiming one Person. Roles are stored; no administration UI is introduced.
+- `legacy_member_records` preserves original Member IDs, email, links, lifecycle/onboarding timestamps and creator/event references as migration history. It is never consulted for authorization. Legacy PRELINKED associations do not automatically claim a Person in the new flow.
 
-| Location | Responsibility |
+On a server-verified session, page entry binds an eligible Family admission to the application Account and creates that Family's Membership idempotently. No fake auth users are seeded. A bound admission cannot be taken over by another auth identity reusing the email. Later identity lookup uses auth user ID; email is used only to bind an unbound admission. Existing revoked Memberships/admissions are never reactivated by login. Account disablement also denies access.
+
+Every graph service call verifies the session and independently authorizes the requested Family. The internal Drizzle query requires an explicit Family ID. Search and immediate context run only over that authorized, filtered DTO. The browser receives Person ID/name and Relationship ID/endpoints/type/status, plus its own Person link. The shell separately receives only the current verified session’s email for the “Signed in as” indicator beside logout, in both Setup and Explorer modes. During Setup Mode only, each Person also has a claimability label; no Account, Membership, admission or auth records are sent. It receives no full DOB, notes or other participants’ emails. No provider organization/team represents a Family.
+
+Claims recheck authorization under row locks, validate Family-local Person ownership and uniqueness, and update only Membership onboarding state plus events. Concurrent claims are protected by locks and a database unique index. An identical retry succeeds; changing an established claim fails. Accounts and Person records are never merged. Person creation and Account Global Profile remain deferred.
+
+## Seeds and pilot admissions
+
+`seed/fixtures/families.csv` explicitly declares `sample-family,Sample Family`. People/Relationships include `family_id`; original synthetic Person/Relationship IDs remain stable. A minimal second Family is created by integration-test setup only, not exposed as a product feature.
+
+For a new private graph, copy `seed/templates` under Git-ignored `seed/private`, supply `families.csv`, `people.csv`, `relationships.csv`, and `admissions.csv`, then validate/import using `SEED_DIR=seed/private`. The legacy `members.csv` format is accepted for historical seed compatibility; it imports archival records and admission eligibility, not authenticated Accounts or completed claims. New pilot participants should use admissions only.
+
+Admission format:
+
+```csv
+admission_id,family_id,email,role,status,expected_person_id
+pilot-001,sample-family,participant@example.com,MEMBER,ACTIVE,P001
+```
+
+Emails normalize to lowercase/trimmed form. Admission ID and Family+email must be unique. Roles are MEMBER/ADMIN and status is ACTIVE/REVOKED. Family must already exist when applying admissions independently. Do not supply auth user IDs, Account IDs, OTPs or passwords. Person links are established only by the authenticated claim action. Validation rejects unknown Family/Person references, duplicate admissions, invalid legacy claim hints, and cross-Family relationships; PostgreSQL enforces Membership/Person Family consistency and claim uniqueness.
+
+`expected_person_id` is optional: use an explicit existing Person ID in the same Family, or leave it blank for unconstrained self-identification. No name/email matching is performed. It neither reserves nor claims a Person and creates no Account or onboarding confirmation. The participant must still choose **This is me**. A non-null expectation permits only that Person; any active live claim makes the Person unavailable. Other People remain visible and searchable. Synthetic expectations are M001 → P001 and M002 → P003 (the explicitly chosen Sam); M003 remains blank because Casey is not represented in the fixture. Legacy Member links are never live claims or implicit admission expectations.
+
+To **add participants to an existing graph**, add rows to the private `admissions.csv`, then:
+
+```sh
+SEED_DIR=seed/private npm run admissions:import
+```
+
+This is a transactional upsert of admissions only, not graph import. It refuses to change an existing admission's email/Family or reactivate a revoked admission. It updates roles without restoring access. Omitted rows are unchanged. To **revoke access**, set the row to REVOKED and rerun the command; it revokes associated Memberships too. Subsequent server requests fail even if the auth session remains valid. Reinstatement/identity correction requires a separately reviewed administrative operation and is not supplied by this slice.
+
+Unknown/cross-Family expected IDs fail validation and a composite database foreign key. An older CSV without the optional column preserves existing expectations; an explicitly blank cell clears the expectation, so review blanks carefully. Import rejects a non-null expectation conflicting with an existing Membership claim and never changes the claim. Unchanged roles no longer rewrite Membership timestamps.
+
+On first verified entry into that Family, admission binding and Membership creation occur in one transaction with a per-auth-subject lock. A retry cannot duplicate Account/Membership. No admission for the requested Family means no access, even if the email belongs to another admitted Family. Additional authorized Families may be reached through a supplied `/?family=FAMILY_ID` URL; no switcher or listing of other memberships is provided.
+
+The initial graph importer still refuses nonempty domain databases. Intentional development reset remains restricted to `NODE_ENV=development`, a loopback database ending `_dev`, and explicit `--reset-development`. Never use it against pilot data. Keep all private seed files and `.env` outside Git. Records become PostgreSQL-owned after import.
+
+## Environment and deployment
+
+| Variable | Purpose |
 | --- | --- |
-| `src/app` | Server-rendered graph loading, disabled/error/empty states and explorer UI |
-| `src/domain` | Person, Member, Relationship, canonical graph and primitive semantics |
-| `src/server/db` | Drizzle schema and database connections |
-| `src/server/graph` | Read-only query, local gate and server-only graph service |
-| `src/server/seed` | CSV validation and transactional import |
-| `src/components/graph` | Explorer components, Cytoscape adapter, presentation state and layouts |
-| `src/components/onboarding` | Reserved for future onboarding UI |
-| `src/lib` | Reserved for shared utilities |
-| `drizzle` | Committed SQL migrations, snapshots and journal |
-| `seed/templates` | Empty human-authoring CSV templates |
-| `seed/fixtures` | Synthetic examples, including same names and unclaimed Members |
-| `seed/private` | Git-ignored private inputs |
-| `scripts` | Migration and seed command entry points |
-| `tests` | Unit, PostgreSQL integration and desktop/mobile browser suites |
+| `DATABASE_URL` | Server PostgreSQL connection |
+| `TEST_DATABASE_URL` | Disposable database ending `_test` only |
+| `BETTER_AUTH_SECRET` | Random secret, at least 32 characters; never client-visible |
+| `BETTER_AUTH_URL` | Exact origin, no trailing slash; HTTPS in production |
+| `MAIL_TRANSPORT` | `mailpit` locally; `smtp` in production |
+| `SMTP_HOST`, `SMTP_PORT` | Loopback:1025 locally; production TLS SMTP, normally port 465 |
+| `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Production mail credentials/authenticated sender |
+| `AUTH_IP_HEADER` | Required in production: client-IP header overwritten by the trusted hosting proxy |
+| `SEED_DIR`, `SEED_SOURCE` | Seed input directory and provenance label |
 
-People and Relationships alone form the canonical graph. A Member represents access and may have no Person link. `VisualizationState` holds selection/pan/zoom; `LayoutState` holds coordinates and a generational/network strategy. Neither is persisted as family data. Cytoscape receives newly allocated display elements behind an adapter. Its node/edge IDs are namespaced so a Person and Relationship with the same database ID cannot collide. Canonical data is never reconstructed from the renderer. Dragged positions are retained per layout in component memory; reloading the page resets them.
+Production refuses Mailpit, HTTP origin, missing credentials, placeholder secrets and an unspecified proxy IP header. Configure the host to **strip/overwrite** the selected header; never trust arbitrary client-supplied forwarding headers. Auth rate limits persist in PostgreSQL across instances: send 3/minute/IP, verify 10/minute/IP, plus plugin rules and three guesses/code. They are enabled in development too. Shared-IP households can hit these limits; tune with measured pilot traffic. A distributed attacker using many IPs can still cause email abuse; enforce provider send budgets/edge abuse controls before public deployment.
 
-App persistence uses the `server-only` entry point in `src/server/db/index.ts`. The separate connection factory supports CLI and tests. ESLint prevents domain/components from importing persistence. The root Server Component calls `getExplorerGraph()`, which checks the local development gate before opening the database. `retrieveExplorerGraph()` executes explicit Drizzle column selections in a read-only, repeatable-read transaction. The returned `ExplorerGraph` includes only Person ID/display name and Relationship ID/endpoints/type/status. No REST endpoint or mutation action is added. Search and immediate-family queries run over this small, safe DTO in the browser.
+Codes are hashed in storage, expire after five minutes, rotate on resend, and are consumed atomically by Better Auth. Seven-day database sessions use production Secure/HttpOnly cookies and no cookie session cache. Supported Better Auth handlers retain CSRF/origin protections. Claim/events endpoints require same-origin POST and server authorization. No raw email/code/token/DOB is written to application logs or telemetry; auth library/SMTP logging is disabled. Anonymous auth telemetry records only outcome types; search events omit query text.
 
-DOB, nickname, living state, notes, timestamps, provenance details, privacy preferences, Member email and identity links are not queried or serialized. This slice displays no birthday fields, regardless of sharing flags. Future authenticated profile views can introduce permission-aware fields. Raw Person records are never response types.
+Choose a production host, database backups/pooling, HTTPS origin, trusted proxy header, mail service and authenticated sender domain (SPF/DKIM/DMARC). SMTP delivery is awaited for reliability; this can expose delivery timing differences despite generic responses. Monitor delivery and limits without logging secrets. No production email delivery or hosting was configured/tested. Resolve the recorded Next.js security advisory before hosting.
 
-## Schema conventions
+## Migrations and verification
 
-The five specified tables are `people`, `members`, `relationships`, `profile_privacy`, and `events`.
-
-- Stable text IDs accommodate human-assigned seed keys and future generated IDs. Names, DOB and email are not Person keys.
-- Unknown DOB and living state are nullable; an unknown date is never fabricated.
-- A unique nullable Member-to-Person foreign key prevents double claims. Email uniqueness is case-insensitive. PRELINKED describes an initial association, not proof that a Member has signed in: seeded Members remain INVITED with no joined timestamp.
-- Only PARENT_OF, SPOUSE_OF and SIBLING_OF persist. CHILD_OF is derived. An expression-based unique index rejects reversed symmetric duplicates even if a caller does not canonicalize ordering. Self-links, invalid endpoints and missing provenance are rejected by PostgreSQL.
-- Member-created relationships default to UNVERIFIED. Seeds use SEEDED with an explicit `seed_source` and no invented Member creator. Each relationship has exactly one provenance source.
-- Privacy is a separate row, both DOB sharing flags default false. Missing privacy rows must also be treated as private by future query code. Stored values do not imply display or AI-use consent.
-- Events include all 14 Milestone 1 event types and nullable contextual foreign keys. Instrumentation and metadata filtering/throttling are future product work.
-- Foreign-key deletion defaults preserve referential integrity; deleting a Person cascades only its privacy row. There is no general deletion workflow.
-
-## Migrations
+Use reviewed forward migrations: `npm run db:generate`, inspect SQL/snapshots, then `npm run db:migrate`. Migration 0002 archives Members, scopes existing graph/history to Sample Family, provisions eligible admissions, and adds isolated auth/domain tables and constraints. It preserves graph IDs/provenance; it does not invent auth identities or silently claim People.
 
 ```sh
-# After editing src/server/db/schema.ts:
-npm run db:generate
-# Review the generated SQL and commit SQL plus drizzle/meta files.
-npm run db:migrate
-```
-
-The migrator records applied migrations in PostgreSQL and can run repeatedly. Use forward migrations; never edit an already deployed migration or run schema push against the pilot. Custom SQL triggers maintain `updated_at` for People and Relationships independently of the data-access caller. Run migrations once per deployment before starting application instances. A migration connection should have DDL privileges; future hosted application credentials should not.
-
-## Authoring and importing seed data
-
-Copy the template headers into `seed/private`. Keep private names, dates, email addresses and notes out of tracked files. `.env*` is ignored except `.env.example`. Synthetic fixtures use example.com addresses.
-
-`people.csv` and `relationships.csv` are required, even if only headers; `members.csv` is optional. People require `person_id,display_name`. Relationships require `from_person_id,to_person_id,relationship_type`. If supplying Members, this email-login scaffold requires `member_key,display_name,email`; Person association and onboarding state are optional. Blank onboarding state is derived as PRELINKED for a linked Person and UNCLAIMED otherwise. All accepted columns are shown in the templates. Unknown columns are rejected on data rows. Notes are retained internally and must not be returned indiscriminately.
-
-CSV parsing handles quoted fields, newlines, commas and BOM. Validation checks calendar dates, living values, IDs, endpoints, self-links, supported types, canonical duplicates, duplicate logins and claims, and onboarding/link consistency. It emits nonblocking warnings for missing DOB, isolated People, more than two parents, redundant explicit siblings and disconnected components. Valid loops, multiple spouses and cross-branch paths are allowed; no relationships are inferred.
-
-```sh
-SEED_DIR=seed/private npm run seed:validate
-SEED_DIR=seed/private SEED_SOURCE=pilot-initial-v1 npm run seed
-```
-
-Reports contain counts and issue codes, not private record values. Row numbers are logical CSV record numbers (a quoted multiline record counts once). Missing relationship IDs are generated deterministically from canonical endpoints and type. Changing CSV order will not change them.
-
-Import revalidates, locks the tables, checks that the database is empty, and inserts People/privacy, Relationships and Members in one transaction. Any failure rolls back the entire import. Running it again against populated data deliberately fails instead of silently replacing participant contributions. Seed CSVs stop being the system of record after import.
-
-For an intentional development reset only:
-
-```sh
-NODE_ENV=development npm run seed -- --reset-development
-```
-
-This deletes all five tables' data within the import transaction. It is accepted only for loopback database hosts with a name ending in `_dev` and `NODE_ENV=development`. Never label a pilot database `_dev` or use this command through a tunnel to pilot data. There is no automatic reset. For pilot operations, use a backup and a separately reviewed migration.
-
-## Validation and tests
-
-```sh
-npm run check              # ESLint, strict typecheck, unit tests
-npm run seed:validate
-# Create a dedicated disposable test database once:
-docker compose exec db createdb -U family family_network_test
+npm run lint
+npm run typecheck
+npm test
 npm run test:integration
-npx playwright install chromium
-npm run test:browser       # Also resets the disposable _test database to the existing fixture
+npm run seed:validate
+npm run test:browser
 npm run build
 ```
 
-Integration tests require `TEST_DATABASE_URL` ending in `_test`; they fail clearly if it is missing and truncate the five application tables before each test. Do not point them at valuable data. They apply real migrations and cover provenance, privacy defaults, identity uniqueness, relationship constraints, import rollback and refusal to overwrite data. Unit tests cover parsing, validation, warnings, canonicalization/inverse semantics and development reset guards. Browser tests apply migrations and seed the existing synthetic CSVs into the same dedicated test database, then start a temporary loopback dev server on port 3100. They cover duplicate-name context, graph/list selection synchronization, centering, layout switching, zoom, dragging, keyboard panning, touch selection and responsive overflow. Their teardown compares all five tables with the pre-interaction snapshot. Run database integration and browser suites sequentially because both reset the test database. Screenshots and failure traces are written to ignored `test-results/`.
+Create `family_network_test` once with `docker compose exec db createdb -U family family_network_test`. Integration/browser suites reset only the explicit `_test` database and must run sequentially. Browser tests require Mailpit and clear its **local test inbox**; do not use that inbox for valuable messages. They exercise genuine OTP delivery, claim/return/logout, desktop/mobile Explorer regression, and canonical graph/archival record/privacy invariance. Events, Accounts and Memberships intentionally change in this slice. CI provisions PostgreSQL and Mailpit.
 
-CI provisions PostgreSQL and Chromium and runs all suites plus a production build.
-
-## Scope and remaining Milestone 1 work
-
-This setup does not complete Milestone 1's product acceptance scenarios. Authentication, identity claim/create-self/anchor workflows, onboarding UI and event recording remain unimplemented at the user's request. No DB schema or fixtures changed for this slice. The existing fixture contains no SIBLING_OF row; unit tests exercise sibling semantics and actual Cytoscape styles separately without altering the dataset.
-
-Generational layout groups explicitly related spouses/siblings, collapses parent cycles into presentation components, and assigns longest-parent-path ranks to the resulting DAG. Disconnected people remain visible. This is a best-effort projection: contradictory/cross-generation links can share a visual rank, and it makes no claim about kinship beyond recorded edges. Network layout runs Cytoscape's built-in CoSE force algorithm on disposable copies. Both layouts preserve selection and all canonical data. Manual positions survive switching away and back within the page session; Reset layout discards manual positions only for the active layout, recomputes its default arrangement and fits the graph; selection and the other layout’s positions are preserved. Fit all changes only the viewport, and Center in graph focuses the selected Person without changing positions.
-
-The keyboard-accessible people list and context panel provide text equivalents to canvas selection and edge information. Parent/Child uses an arrow and solid line, Spouse/Partner a dashed line, and Sibling a dotted line; each also has a text label and color. Mobile uses a bounded people list above the graph and context below it.
-
-See [EXPLORER_REPORT.md](./EXPLORER_REPORT.md) for slice verification and architectural limitations. [SETUP_REPORT.md](./SETUP_REPORT.md) remains the historical foundation report.
-
-The optional email login convention, nullable unknown living state, SEEDED status, and separate PRELINKED/onboarding status are implementation choices within the specifications. Drizzle is the permitted equivalent to Prisma. No invitations workflow, verification, admin dashboard, kinship paths, AI or other later-milestone features have been added.
-
-The current stable Drizzle Kit dependency chain reports four moderate development-only audit findings through legacy esbuild. It is used for migration generation, not as a served development endpoint. Runtime dependency audit results and verification outcomes are recorded in the setup report; recheck `npm audit` as dependencies evolve.
+Cytoscape and both layout algorithms remain presentation-only. Pan/zoom/search/selection, independent manual positions, Reset layout, Fit all, and Center remain supported. Setup Mode adds identity controls without graph mutation. Physical-device authentication and production SMTP still need pilot checks. Earlier setup/explorer reports are historical; this README and the current report describe the new boundary.

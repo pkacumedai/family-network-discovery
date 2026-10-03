@@ -1,0 +1,2 @@
+ALTER TABLE "family_admissions" ADD COLUMN "expected_person_id" text;--> statement-breakpoint
+ALTER TABLE "family_admissions" ADD CONSTRAINT "admission_expected_person_family_fk" FOREIGN KEY ("family_id","expected_person_id") REFERENCES "public"."people"("family_id","id") ON DELETE no action ON UPDATE no action;

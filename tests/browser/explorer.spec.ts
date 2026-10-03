@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { login } from './login';
+test.beforeEach(async ({ page }) => { await login(page, 'alex@example.com'); });
 test('explores the database fixture with search, selection and interchangeable layouts', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -44,9 +46,10 @@ test('explores the database fixture with search, selection and interchangeable l
   await expect(context).toContainText('No relationships recorded for this person.');
   await search.fill('');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  // Neither SSR/RSC payloads nor rendered text may contain fixture DOB, notes, or Member emails.
+  // Only the current session email is intentional; other participant emails and private graph fields remain excluded.
   const html = await (await page.request.get('/')).text();
-  expect(html).not.toMatch(/1950-06-12|1978-02-14|alex@example.com|Disconnected ancestor|birthDate|seedSource/);
+  expect(html).toContain('alex@example.com');
+  expect(html).not.toMatch(/1950-06-12|1978-02-14|sam@example.com|casey@example.com|Disconnected ancestor|birthDate|seedSource|accountId|membershipId|admissionId|authUserId|sessionId/);
   await page.getByRole('button', { name: 'Fit all', exact: true }).click();
   await page.screenshot({ path: `test-results/explorer-${testInfo.project.name}.png`, fullPage: true });
   expect(errors).toEqual([]);

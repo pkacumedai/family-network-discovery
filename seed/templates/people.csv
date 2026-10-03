@@ -1,1 +1,1 @@
-person_id,display_name,birth_date,is_living,nickname,notes
+family_id,person_id,display_name,birth_date,is_living,nickname,notes

@@ -74,3 +74,22 @@ h3 { margin: 28px 0 14px; font-size: 12px; font-weight: 600; }h3 span { float: r
 
 .reset-layout { border: 1px solid #d4ddcf; border-radius: 7px; background: #fffefb; padding: 8px 12px; min-height: 44px; font-size: 11px; }
 .reset-layout:hover { background: #ecf0e7; }
+
+.auth-panel { max-width: 32rem; margin: 4rem auto; padding: 1.5rem; }
+.auth-panel form { display: grid; gap: .8rem; margin: 1.5rem 0; }
+.auth-panel input { width: 100%; min-height: 44px; padding: .7rem; border: 1px solid #bbb; border-radius: .5rem; font: inherit; }
+.setup-panel { padding: 1rem 1.5rem; background: #edf3f0; border-radius: .7rem; margin-top: 1rem; }
+.setup-panel h2 { margin: 0 0 .5rem; }
+.setup-panel p { margin: 0; }
+.auth-panel button, .claim-button, .logout-button { min-height: 44px; padding: .65rem 1rem; border: 1px solid #cbd6c5; border-radius: .45rem; background: #fff; color: #294238; font: inherit; cursor: pointer; }
+.auth-panel form button, .claim-button { background: #345b48; color: #fff; border-color: #345b48; font-weight: 600; }
+.claim-button { width: 100%; margin-top: .75rem; }
+.logout-button { white-space: nowrap; flex-shrink: 0; padding: .55rem .7rem; }
+.auth-panel button:disabled, .claim-button:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 480px) { .app-header .preview-badge { display: none; } }
+
+.session-controls { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.session-identity { margin: 0; font-size: 12px; color: #637663; min-width: 0; overflow-wrap: anywhere; }
+.session-identity span { display: block; color: #263d32; }
+.session-controls button { flex-shrink: 0; }
+@media (max-width: 700px) { .app-header { flex-wrap: wrap; padding-block: 12px; gap: 10px; }.session-controls { width: 100%; justify-content: space-between; } }

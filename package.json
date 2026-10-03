@@ -19,14 +19,17 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:validate": "tsx scripts/seed.ts validate",
     "seed": "tsx scripts/seed.ts import",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "admissions:import": "tsx scripts/admissions.ts"
   },
   "dependencies": {
+    "better-auth": "1.7.7",
     "csv-parse": "7.0.2",
     "cytoscape": "3.34.3",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.45.2",
-    "next": "16.3.4",
+    "next": "16.3.8",
+    "nodemailer": "10.0.13",
     "pg": "8.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -36,12 +39,13 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@types/node": "24.13.4",
+    "@types/nodemailer": "8.0.2",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.3.8",
     "tsx": "4.23.13",
     "typescript": "6.0.3",
     "vitest": "5.0.0"

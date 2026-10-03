@@ -12,6 +12,8 @@ async function main() {
   }
   const directory = resolve(process.env.SEED_DIR ?? 'seed/fixtures');
   const files = {
+    families: await readFile(resolve(directory, 'families.csv'), 'utf8'),
+    admissions: await readFile(resolve(directory, 'admissions.csv'), 'utf8'),
     people: await readFile(resolve(directory, 'people.csv'), 'utf8'),
     relationships: await readFile(resolve(directory, 'relationships.csv'), 'utf8'),
     members: await readFile(resolve(directory, 'members.csv'), 'utf8').catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return undefined; throw e; }),

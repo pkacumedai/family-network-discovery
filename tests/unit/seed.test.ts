@@ -88,3 +88,23 @@ describe('reset eligibility', () => {
   ])('rejects unsafe reset target', (url, env) => expect(() => assertDevelopmentReset(url, env)).toThrow());
   it('permits explicit local development target', () => expect(() => assertDevelopmentReset('postgresql://u:p@localhost/family_dev', 'development')).not.toThrow());
 });
+
+describe('optional admission expected Person validation', () => {
+  const header = 'admission_id,family_id,email,role,status,expected_person_id\n';
+  it('accepts explicit expected Person and blank expectation without inferred identity', () => {
+    const report = validateSeed({ ...base, admissions: header + 'A,sample-family,one@example.com,MEMBER,ACTIVE,P1\nB,sample-family,two@example.com,MEMBER,ACTIVE,\n' });
+    expect(report.errors).toEqual([]);
+    expect(report.data.admissions.map(a => a.expected_person_id)).toEqual(['P1', '']);
+    expect(report.data.members).toEqual([]);
+  });
+  it('accepts legacy CSV without expected column distinctly from explicit blank', () => {
+    const report = validateSeed({ ...base, admissions: 'admission_id,family_id,email,role,status\nA,sample-family,one@example.com,MEMBER,ACTIVE\n' });
+    expect(report.errors).toEqual([]); expect(report.data.admissions[0].expected_person_id).toBeUndefined();
+  });
+  it('rejects unknown expected Person', () => {
+    expect(codes({ ...base, admissions: header + 'A,sample-family,one@example.com,MEMBER,ACTIVE,missing\n' })).toContain('UNKNOWN_EXPECTED_PERSON');
+  });
+  it('rejects cross-Family expected Person', () => {
+    expect(codes({ ...base, families: 'family_id,name\nsample-family,Sample\nother,Other\n', admissions: header + 'A,other,one@example.com,MEMBER,ACTIVE,P1\n' })).toContain('CROSS_FAMILY_EXPECTED_PERSON');
+  });
+});

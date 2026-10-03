@@ -20,9 +20,9 @@ const graph: ExplorerGraph = {
 describe('explorer domain', () => {
   it('whitelists fields even when a full canonical graph is supplied', () => {
     const canonical = {
-      people: graph.people.map(p => ({ ...p, birthDate: '1978-02-14', notes: 'private', nickname: 'secret', isLiving: true,
+      people: graph.people.map(p => ({ ...p, familyId: 'sample-family', birthDate: '1978-02-14', notes: 'private', nickname: 'secret', isLiving: true,
         createdAt: new Date(), updatedAt: new Date(), createdByMemberId: 'M1' })),
-      relationships: graph.relationships.map(r => ({ ...r, seedSource: 'private-source', createdAt: new Date(), updatedAt: new Date(), createdByMemberId: null })),
+      relationships: graph.relationships.map(r => ({ ...r, familyId: 'sample-family', seedSource: 'private-source', createdAt: new Date(), updatedAt: new Date(), createdByMemberId: null })),
     } satisfies FamilyGraph;
     const before = structuredClone(canonical); freeze(canonical);
     const dto = toExplorerGraph(canonical);
@@ -103,9 +103,9 @@ it('fails closed outside explicitly enabled development', () => {
 describe('reset layout', () => {
   it.each(['generational', 'network'] as const)('restores %s only, fits, and preserves selection and canonical records', strategy => {
     const canonical = freeze({
-      people: graph.people.map(p => ({ ...p, birthDate: '1978-02-14', nickname: null, isLiving: true,
+      people: graph.people.map(p => ({ ...p, familyId: 'sample-family', birthDate: '1978-02-14', nickname: null, isLiving: true,
         createdAt: new Date(), updatedAt: new Date(), createdByMemberId: 'M1' })),
-      relationships: graph.relationships.map(r => ({ ...r, seedSource: 'original-source',
+      relationships: graph.relationships.map(r => ({ ...r, familyId: 'sample-family', seedSource: 'original-source',
         createdAt: new Date(), updatedAt: new Date(), createdByMemberId: null })),
     } satisfies FamilyGraph);
     const before = structuredClone(canonical);

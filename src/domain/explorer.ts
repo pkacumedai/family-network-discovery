@@ -1,7 +1,8 @@
 import type { FamilyGraph, Person, Relationship } from './model';
 
 // Explicit display allowlist. No DOB, Member association, notes or source metadata.
-export type ExplorerPerson = Readonly<Pick<Person, 'id' | 'displayName'>>;
+export type Claimability = 'EXPECTED' | 'ALREADY_CLAIMED' | 'NOT_ELIGIBLE' | 'AVAILABLE';
+export type ExplorerPerson = Readonly<Pick<Person, 'id' | 'displayName'> & { claimability?: Claimability }>;
 export type ExplorerRelationship = Readonly<Pick<Relationship,
   'id' | 'fromPersonId' | 'toPersonId' | 'relationshipType' | 'status'>>;
 export interface ExplorerGraph {
